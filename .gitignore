@@ -4,3 +4,8 @@ target/
 *.log
 .env
 .cache/
+
+
+# Added by cargo
+
+/target
