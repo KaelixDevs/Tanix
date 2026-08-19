@@ -204,6 +204,7 @@ As Tanix matures, we plan to expand support to additional major Linux distributi
 * Linux Mint
 * openSUSE
 * Other major Linux distributions
+* Later on, we plan to expand to a new software just like Tanix except built around BSD.
 
 Our goal is to make Tanix as distribution-agnostic as possible while maintaining a reliable and consistent experience across supported platforms.
 
