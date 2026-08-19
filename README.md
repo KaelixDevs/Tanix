@@ -23,7 +23,7 @@ The goal is simple:
 
 ## What is Tanix?
 
-Tanix aims to provide a dedicated Linux compatibility environment for running **TONEX** and **AmpliTube 5**.
+Tanix is designed to provide a dedicated Linux compatibility environment for both IK MultiMedia's TONEX and Amplitube 5.
 
 Rather than recreating these applications or developing an alternative guitar amp and effects platform, Tanix focuses on making the existing Windows applications usable on Linux.
 
@@ -204,11 +204,17 @@ As Tanix matures, we plan to expand support to additional major Linux distributi
 * Linux Mint
 * openSUSE
 * Other major Linux distributions
-* Later on, we plan to expand to a new software just like Tanix except built around BSD.
+
 
 Our goal is to make Tanix as distribution-agnostic as possible while maintaining a reliable and consistent experience across supported platforms.
 
 Distribution support may vary depending on system libraries, package availability, audio configuration, and the packaging method used by Tanix.
+
+## Future Projects
+
+As the Tanix ecosystem matures, we may eventually develop a separate project focused on bringing the same concept to BSD-based operating systems.
+
+This would be a separate project from Tanix rather than an extension of Tanix's Linux support.
 
 ## Architecture
 
@@ -318,8 +324,8 @@ cargo clippy
 
 ### Phase 1 — Foundation
 
-* [ ] Project architecture
-* [ ] Linux runtime
+* [✓] Project architecture
+* [✓] Linux runtime
 * [ ] Application management
 * [ ] Configuration system
 * [ ] Basic launcher
