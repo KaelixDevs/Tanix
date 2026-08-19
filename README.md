@@ -165,19 +165,33 @@ Support and performance will depend on the user's hardware and Linux audio confi
 
 ## Linux Support
 
-Tanix is designed specifically for Linux.
+Tanix is built specifically for Linux, with broad distribution support as a core goal of the project.
 
-The project may support distributions such as:
+### Initial Support
 
-* Arch Linux
-* CachyOS
-* Fedora
+Our initial focus is on:
+
+* **All Arch-based distributions**
+* **NixOS**
+* **Gentoo**
+* **Fedora**
+
+This includes distributions such as Arch Linux, CachyOS, EndeavourOS, Manjaro, and other Arch-based systems.
+
+### Future Support
+
+As Tanix matures, we plan to expand support to additional major Linux distributions and ecosystems, including:
+
 * Debian
 * Ubuntu
 * Linux Mint
-* Other modern Linux distributions
+* openSUSE
+* Other major Linux distributions
 
-Distribution support may vary depending on dependencies and the packaging method used by Tanix.
+Our goal is to make Tanix as distribution-agnostic as possible while maintaining a reliable and consistent experience across supported platforms.
+
+Distribution support may vary depending on system libraries, package availability, audio configuration, and the packaging method used by Tanix.
+
 
 ## Architecture
 
