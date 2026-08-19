@@ -324,8 +324,8 @@ cargo clippy
 
 ### Phase 1 — Foundation
 
-* [✓] Project architecture
-* [✓] Linux runtime
+* [x] Project architecture
+* [x] Linux runtime
 * [ ] Application management
 * [ ] Configuration system
 * [ ] Basic launcher
