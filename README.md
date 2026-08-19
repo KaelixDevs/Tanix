@@ -23,7 +23,7 @@ The goal is simple:
 
 ## What is Tanix?
 
-Tanix is designed to provide a dedicated Linux compatibility environment for both IK MultiMedia's TONEX and Amplitube 5.
+Tanix is designed to provide a dedicated Linux compatibility environment for both IK Multimedia's TONEX and AmpliTube 5
 
 Rather than recreating these applications or developing an alternative guitar amp and effects platform, Tanix focuses on making the existing Windows applications usable on Linux.
 
