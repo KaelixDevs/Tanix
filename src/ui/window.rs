@@ -40,12 +40,20 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     content.set_margin_end(40);
     content.set_spacing(28);
 
+    // ---------------------------------------------------------
+    // Welcome
+    // ---------------------------------------------------------
+
     let welcome = StatusPage::builder()
         .title("Tanix")
         .description("TONEX + AmpliTube on Linux")
         .build();
 
     content.append(&welcome);
+
+    // ---------------------------------------------------------
+    // Applications
+    // ---------------------------------------------------------
 
     let applications = PreferencesGroup::builder()
         .title("Your Rig")
@@ -67,28 +75,57 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     applications.add(&app_buttons);
     content.append(&applications);
 
+    // ---------------------------------------------------------
+    // Separator
+    // ---------------------------------------------------------
+
     let separator = Separator::new(Orientation::Horizontal);
     content.append(&separator);
+
+    // ---------------------------------------------------------
+    // Audio
+    // ---------------------------------------------------------
 
     let audio = PreferencesGroup::builder()
         .title("Audio")
         .description("Your Linux audio configuration")
         .build();
 
-    let input = Label::new(Some("Input     Not configured"));
+    let (input_text, output_text, status_text) = match audio_status {
+        AudioStatus::Connected { inputs, outputs } => {
+            let input_text = inputs
+                .first()
+                .map(|device| format!("Input     {}", device.name))
+                .unwrap_or_else(|| {
+                    "Input     No input device detected".to_string()
+                });
+
+            let output_text = outputs
+                .first()
+                .map(|device| format!("Output    {}", device.name))
+                .unwrap_or_else(|| {
+                    "Output    No output device detected".to_string()
+                });
+
+            (
+                input_text,
+                output_text,
+                "● PipeWire connected".to_string(),
+            )
+        }
+
+        AudioStatus::Failed(error) => (
+            "Input     Unable to detect devices".to_string(),
+            "Output    Unable to detect devices".to_string(),
+            format!("● PipeWire error: {error}"),
+        ),
+    };
+
+    let input = Label::new(Some(&input_text));
     input.set_xalign(0.0);
 
-    let output = Label::new(Some("Output    Not configured"));
+    let output = Label::new(Some(&output_text));
     output.set_xalign(0.0);
-
-    let status_text = match audio_status {
-        AudioStatus::Connected => {
-            "● PipeWire connected".to_string()
-        }
-        AudioStatus::Failed(error) => {
-            format!("● PipeWire error: {error}")
-        }
-    };
 
     let status = Label::new(Some(&status_text));
     status.set_xalign(0.0);
@@ -98,6 +135,10 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     audio.add(&status);
 
     content.append(&audio);
+
+    // ---------------------------------------------------------
+    // Runtime
+    // ---------------------------------------------------------
 
     let runtime = PreferencesGroup::builder()
         .title("Tanix Runtime")
@@ -114,6 +155,10 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     runtime.add(&backend);
 
     content.append(&runtime);
+
+    // ---------------------------------------------------------
+    // Window
+    // ---------------------------------------------------------
 
     root.append(&header);
     root.append(&content);

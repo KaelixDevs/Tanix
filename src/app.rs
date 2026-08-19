@@ -12,7 +12,7 @@ pub fn run() {
         .build();
 
     application.connect_activate(|app| {
-        let audio_status = audio::check_pipewire();
+        let audio_status = audio::detect_audio_devices();
         build_window(app, audio_status);
     });
 
