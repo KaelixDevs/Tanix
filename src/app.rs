@@ -1,6 +1,7 @@
 use adw::prelude::*;
 use adw::Application;
 
+use crate::audio;
 use crate::ui::window::build_window;
 
 const APP_ID: &str = "io.tanix.Tanix";
@@ -11,7 +12,8 @@ pub fn run() {
         .build();
 
     application.connect_activate(|app| {
-        build_window(app);
+        let audio_status = audio::check_pipewire();
+        build_window(app, audio_status);
     });
 
     application.run();

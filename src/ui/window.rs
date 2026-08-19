@@ -16,7 +16,9 @@ use gtk::{
     Separator,
 };
 
-pub fn build_window(app: &Application) {
+use crate::audio::AudioStatus;
+
+pub fn build_window(app: &Application, audio_status: AudioStatus) {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("Tanix")
@@ -63,7 +65,6 @@ pub fn build_window(app: &Application) {
     app_buttons.append(&amplitube_button);
 
     applications.add(&app_buttons);
-
     content.append(&applications);
 
     let separator = Separator::new(Orientation::Horizontal);
@@ -80,7 +81,16 @@ pub fn build_window(app: &Application) {
     let output = Label::new(Some("Output    Not configured"));
     output.set_xalign(0.0);
 
-    let status = Label::new(Some("● PipeWire status will appear here"));
+    let status_text = match audio_status {
+        AudioStatus::Connected => {
+            "● PipeWire connected".to_string()
+        }
+        AudioStatus::Failed(error) => {
+            format!("● PipeWire error: {error}")
+        }
+    };
+
+    let status = Label::new(Some(&status_text));
     status.set_xalign(0.0);
 
     audio.add(&input);
