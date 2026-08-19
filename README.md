@@ -13,19 +13,21 @@ The goal is simple:
 > [!WARNING]
 > **Tanix is an unofficial, community-developed project.**
 >
-> Tanix is **not affiliated with, endorsed by, sponsored by, or otherwise associated with IK Multimedia**.
+> Tanix is **not affiliated with, endorsed by, sponsored by, maintained by, or otherwise associated with IK Multimedia in any way**.
 >
 > TONEX, AmpliTube, IK Multimedia, and all related trademarks, product names, and logos are the property of their respective owners.
 >
-> Use Tanix at your own risk.
+> Tanix does not provide ownership or licensing of IK Multimedia software. Users are responsible for obtaining and properly licensing any proprietary software used with Tanix.
+>
+> **Use Tanix at your own risk.**
 
 ## What is Tanix?
 
-Tanix aims to provide a dedicated Linux runtime for running **TONEX** and **AmpliTube 5**.
+Tanix aims to provide a dedicated Linux compatibility environment for running **TONEX** and **AmpliTube 5**.
 
-Rather than attempting to recreate the applications or build an alternative guitar amp/effects platform, Tanix focuses on making the existing applications usable on Linux.
+Rather than recreating these applications or developing an alternative guitar amp and effects platform, Tanix focuses on making the existing Windows applications usable on Linux.
 
-The project is intended to handle the compatibility layer between the Windows applications and the Linux environment while providing a straightforward user experience.
+Tanix is intended to manage the compatibility environment, application configuration, and Linux integration required to run supported applications while keeping the underlying complexity out of the user's way.
 
 ### The Goal
 
@@ -35,35 +37,38 @@ Linux
 Tanix
   ↓
 TONEX / AmpliTube 5
-  ↓
-Your Audio Interface
-  ↓
-Guitar
 ```
 
 The long-term goal is to make using TONEX and AmpliTube on Linux feel as close as possible to using them on Windows.
 
 ## Current State of the Project
 
-Tanix is currently in active development.
+Tanix is currently in **early development**.
 
-The project is focused on establishing the foundation required to run TONEX and AmpliTube 5 reliably on Linux.
+The project is currently focused on establishing the core architecture and Linux integration required to support TONEX and AmpliTube 5.
 
-Current and planned areas include:
+### Current Development
 
-* Linux application runtime
-* Windows application compatibility
+* Linux application foundation
+* Audio device detection
+* Linux audio integration
+* Core application architecture
+* Initial compatibility work
+
+### Planned
+
 * TONEX support
 * AmpliTube 5 support
-* Audio interface support
-* Low-latency audio
 * Application installation
-* Application updates
+* Application management
+* Low-latency audio
+* Audio interface integration
+* MIDI and controller support
 * Configuration management
 * Persistent application data
-* Controller/MIDI support
+* Application updates
 
-Compatibility will vary depending on the application version, Linux distribution, hardware, and audio configuration.
+> **Note:** Tanix is not yet a complete replacement for a traditional Windows compatibility setup. Compatibility and functionality will improve as development progresses.
 
 ## Supported Applications
 
@@ -71,30 +76,30 @@ Compatibility will vary depending on the application version, Linux distribution
 
 Tanix aims to support the desktop version of **IK Multimedia TONEX**.
 
-Potential functionality includes:
+Planned functionality includes:
 
-* TONEX application
+* TONEX application support
 * Tone Model playback
 * Tone Model management
 * Presets
-* Audio interface input/output
+* Audio input/output
 * Low-latency guitar processing
 * MIDI controllers
-* TONEX hardware integration where compatible
+* TONEX hardware integration where technically feasible
 
 ### AmpliTube 5
 
 Tanix also aims to support **IK Multimedia AmpliTube 5**.
 
-Potential functionality includes:
+Planned functionality includes:
 
-* AmpliTube 5
+* AmpliTube 5 application support
 * Amplifier models
 * Effects
 * Cabinets
 * Signal chains
 * Presets
-* Audio interface input/output
+* Audio input/output
 * MIDI controllers
 * Low-latency guitar processing
 
@@ -115,7 +120,7 @@ Users may need to deal with:
 * MIDI configuration
 * Controller configuration
 
-Tanix aims to hide as much of this complexity as possible.
+Tanix aims to handle as much of this complexity as possible.
 
 Instead of:
 
@@ -139,29 +144,35 @@ Tanix
 TONEX
 ```
 
+The underlying compatibility technology may still involve components such as Wine or other compatibility technologies, but Tanix is intended to manage that complexity for the user.
+
 ## Audio
 
-Real-time guitar processing is a major focus of Tanix.
+Low-latency audio is an important part of Tanix because TONEX and AmpliTube are intended to be used for real-time guitar processing.
 
-The project aims to provide reliable integration with Linux audio systems while minimizing latency.
+Tanix aims to integrate with the Linux audio stack while providing a reliable and low-latency experience.
 
-The intended workflow is:
+The intended audio workflow is:
 
 ```text
 Guitar
    ↓
-USB Audio Interface
+Audio Interface
    ↓
-Tanix
+Linux Audio Stack
    ↓
 TONEX / AmpliTube 5
    ↓
-USB Audio Interface
+Linux Audio Stack
+   ↓
+Audio Interface
    ↓
 Headphones / Speakers
 ```
 
-Support and performance will depend on the user's hardware and Linux audio configuration.
+Tanix sits around the application and compatibility environment rather than acting as the guitar-processing engine itself.
+
+Audio performance will depend on the user's hardware, Linux audio configuration, application version, and system configuration.
 
 ## Linux Support
 
@@ -176,7 +187,13 @@ Our initial focus is on:
 * **Gentoo**
 * **Fedora**
 
-This includes distributions such as Arch Linux, CachyOS, EndeavourOS, Manjaro, and other Arch-based systems.
+This includes distributions such as:
+
+* Arch Linux
+* CachyOS
+* EndeavourOS
+* Manjaro
+* Other Arch-based distributions
 
 ### Future Support
 
@@ -192,69 +209,70 @@ Our goal is to make Tanix as distribution-agnostic as possible while maintaining
 
 Distribution support may vary depending on system libraries, package availability, audio configuration, and the packaging method used by Tanix.
 
-
 ## Architecture
 
 Tanix is designed as a dedicated compatibility environment rather than a replacement for TONEX or AmpliTube.
 
-The architecture is intended to isolate application-specific compatibility requirements from the host Linux system.
+The architecture is intended to separate application-specific compatibility requirements from the host Linux system and provide a consistent environment for supported applications.
 
 A simplified model is:
 
 ```text
-┌─────────────────────────────┐
-│           Linux             │
-├─────────────────────────────┤
-│           Tanix             │
-│                             │
-│  Runtime / Compatibility    │
-│  Audio Integration          │
-│  Configuration              │
-│  Application Management     │
-├─────────────────────────────┤
-│      TONEX / AmpliTube 5    │
-└─────────────────────────────┘
+┌─────────────────────────────────┐
+│              Linux              │
+├─────────────────────────────────┤
+│             Tanix               │
+│                                 │
+│  Compatibility Environment      │
+│  Application Management         │
+│  Configuration                  │
+│  Linux Integration              │
+│  Audio Integration              │
+├─────────────────────────────────┤
+│       TONEX / AmpliTube 5       │
+└─────────────────────────────────┘
 ```
 
-The internal architecture is subject to change as compatibility work progresses.
+The internal architecture is still under development and may change as compatibility work progresses.
 
 ## Installation
 
-Installation instructions will be provided once Tanix reaches a sufficiently stable release.
+Tanix is currently under active development and does not yet provide a finalized end-user installation workflow.
 
-The intended experience is:
+Once Tanix reaches a sufficiently stable release, the intended experience will be:
 
 ```text
 1. Install Tanix
 2. Launch Tanix
-3. Install TONEX or AmpliTube 5
+3. Install or select TONEX / AmpliTube 5
 4. Configure your audio interface
 5. Launch the application
 6. Play
 ```
 
+Installation and application-management functionality will be documented here as it becomes available.
+
 ## Building
 
 ### Prerequisites
 
-Development requirements may include:
+Development requirements currently include:
 
 * Rust
 * Cargo
-* A modern Linux distribution
 * Git
+* A supported Linux distribution
 * Required system libraries
-* Audio development libraries
 
-Additional dependencies may be required as compatibility functionality is implemented.
+Additional dependencies may be required as development progresses.
 
 ### Build
 
 Clone the repository:
 
 ```bash
-git clone https://github.com/xodus-gaming/tanix.git
-cd tanix
+git clone https://github.com/KaelixDevs/Tanix.git
+cd Tanix
 ```
 
 Build Tanix:
@@ -268,8 +286,6 @@ Run the development build:
 ```bash
 cargo run
 ```
-
-> Replace the repository URL above with the actual Tanix repository URL if it differs.
 
 ## Development
 
@@ -312,7 +328,7 @@ cargo clippy
 
 * [ ] TONEX installation
 * [ ] TONEX launching
-* [ ] TONEX application compatibility
+* [ ] TONEX compatibility
 * [ ] Audio input/output
 * [ ] Preset support
 * [ ] MIDI support
@@ -322,9 +338,9 @@ cargo clippy
 
 * [ ] AmpliTube 5 installation
 * [ ] AmpliTube 5 launching
-* [ ] Application compatibility
+* [ ] AmpliTube 5 compatibility
 * [ ] Audio input/output
-* [ ] Presets
+* [ ] Preset support
 * [ ] MIDI support
 * [ ] Controller support
 
@@ -343,7 +359,7 @@ cargo clippy
 * [ ] Graphical installer
 * [ ] Automatic configuration
 * [ ] Application updates
-* [ ] Prefix/runtime management
+* [ ] Runtime management
 * [ ] Logs and diagnostics
 * [ ] Per-application configuration
 * [ ] Desktop integration
@@ -353,8 +369,9 @@ cargo clippy
 * [ ] Improved Windows API compatibility
 * [ ] Hardware integration
 * [ ] Advanced MIDI functionality
-* [ ] Plugin compatibility
-* [ ] Additional IK Multimedia software where feasible
+* [ ] Controller integration
+* [ ] Plugin compatibility where technically feasible
+* [ ] Additional IK Multimedia software where technically feasible
 
 ## Compatibility
 
@@ -365,13 +382,16 @@ Compatibility may be affected by:
 * Application version
 * Linux distribution
 * Kernel version
+* CPU
 * GPU
 * Audio interface
 * PipeWire/ALSA configuration
 * Windows compatibility requirements
-* DRM/licensing systems
+* DRM and licensing systems
 * Online services
 * Hardware-specific drivers
+
+Compatibility may also change between application releases.
 
 If an application works on one system but not another, please provide as much information as possible when reporting the issue.
 
@@ -381,7 +401,7 @@ When opening an issue, include:
 
 * Linux distribution
 * Kernel version
-* Tanix version
+* Tanix version or commit
 * TONEX/AmpliTube version
 * CPU
 * GPU
@@ -390,7 +410,13 @@ When opening an issue, include:
 * Relevant logs
 * Steps to reproduce the problem
 
-Please do not include personal license keys, account credentials, or other sensitive information in issue reports.
+Please do **not** include:
+
+* License keys
+* Passwords
+* Account credentials
+* Authentication tokens
+* Other sensitive information
 
 ## Contributing
 
@@ -404,7 +430,7 @@ To contribute:
 4. Test them on Linux.
 5. Submit a pull request.
 
-For large architectural changes, opening an issue before implementing the change is recommended.
+For larger architectural changes, opening an issue before implementing the change is recommended.
 
 ## Disclaimer
 
@@ -416,9 +442,9 @@ It is not endorsed by, sponsored by, maintained by, or otherwise associated with
 
 **TONEX**, **AmpliTube**, **IK Multimedia**, and all related trademarks, product names, and logos are the property of their respective owners.
 
-Tanix does not distribute proprietary IK Multimedia software unless explicitly permitted by its respective license.
+Tanix does not claim ownership of, redistribute, or provide licenses for proprietary IK Multimedia software.
 
-Users are responsible for obtaining and licensing any proprietary software they use with Tanix.
+Users are responsible for obtaining and properly licensing any proprietary software they use with Tanix.
 
 ## The Goal
 
@@ -428,7 +454,7 @@ Tanix exists to close that gap.
 
 No complicated setup.
 
-No manually maintained Wine prefixes.
+No manually maintained compatibility environments.
 
 No endless configuration guides.
 
