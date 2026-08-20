@@ -3,9 +3,16 @@ use adw::{ActionRow, Application, ApplicationWindow, HeaderBar, PreferencesGroup
 
 use gtk::{Align, Box, Button, DropDown, Orientation, Separator};
 
-use crate::audio::{AudioDevice, AudioStatus};
+use std::{cell::RefCell, rc::Rc};
+
+use crate::{
+    audio::{AudioDevice, AudioDirection, AudioStatus},
+    config::TanixConfig,
+};
 
 pub fn build_window(app: &Application, audio_status: AudioStatus) {
+    let config = Rc::new(RefCell::new(TanixConfig::load()));
+
     let window = ApplicationWindow::builder()
         .application(app)
         .title("Tanix")
@@ -85,11 +92,21 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
                 .cloned()
                 .collect();
 
-            let input_row =
-                create_device_row("Input", "Guitar / instrument input", &hardware_inputs);
+            let input_row = create_device_row(
+                "Input",
+                "Guitar / instrument input",
+                &hardware_inputs,
+                &config,
+                AudioDirection::Input,
+            );
 
-            let output_row =
-                create_device_row("Output", "Monitor / headphone output", &hardware_outputs);
+            let output_row = create_device_row(
+                "Output",
+                "Monitor / headphone output",
+                &hardware_outputs,
+                &config,
+                AudioDirection::Output,
+            );
 
             audio.add(&input_row);
             audio.add(&output_row);
@@ -160,13 +177,18 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     window.present();
 }
 
-fn create_device_row(title: &str, subtitle: &str, devices: &[AudioDevice]) -> ActionRow {
+fn create_device_row(
+    title: &str,
+    subtitle: &str,
+    devices: &[AudioDevice],
+    config: &Rc<RefCell<TanixConfig>>,
+    direction: AudioDirection,
+) -> ActionRow {
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
 
     if devices.is_empty() {
         let dropdown = DropDown::from_strings(&["No hardware detected"]);
         dropdown.set_sensitive(false);
-
         row.add_suffix(&dropdown);
 
         return row;
@@ -178,19 +200,53 @@ fn create_device_row(title: &str, subtitle: &str, devices: &[AudioDevice]) -> Ac
 
     let dropdown = DropDown::from_strings(&name_refs);
 
+    // Restore previously selected device.
+    let saved_id = match direction {
+        AudioDirection::Input => config.borrow().audio.input_node_id,
+        AudioDirection::Output => config.borrow().audio.output_node_id,
+    };
+
+    if let Some(saved_id) = saved_id {
+        if let Some(index) = devices.iter().position(|device| device.id == saved_id) {
+            dropdown.set_selected(index as u32);
+        }
+    }
+
     let devices_for_callback = devices.to_vec();
+    let config_for_callback = Rc::clone(config);
+    let direction_for_callback = direction.clone();
 
     dropdown.connect_selected_notify(move |dropdown| {
         let index = dropdown.selected() as usize;
 
-        if let Some(device) = devices_for_callback.get(index) {
-            println!(
-                "Tanix selected {}: {} (PipeWire node {})",
-                device.direction_label(),
-                device.name,
-                device.id
-            );
+        let Some(device) = devices_for_callback.get(index) else {
+            return;
+        };
+
+        {
+            let mut config = config_for_callback.borrow_mut();
+
+            match direction_for_callback {
+                AudioDirection::Input => {
+                    config.audio.input_node_id = Some(device.id);
+                }
+
+                AudioDirection::Output => {
+                    config.audio.output_node_id = Some(device.id);
+                }
+            }
+
+            if let Err(error) = config.save() {
+                eprintln!("Failed to save Tanix configuration: {error}");
+            }
         }
+
+        println!(
+            "Tanix selected {}: {} (PipeWire node {})",
+            device.direction_label(),
+            device.name,
+            device.id
+        );
     });
 
     row.add_suffix(&dropdown);
@@ -234,8 +290,8 @@ fn create_status_indicator(connected: bool) -> gtk::Image {
 impl AudioDevice {
     fn direction_label(&self) -> &'static str {
         match self.direction {
-            crate::audio::AudioDirection::Input => "input",
-            crate::audio::AudioDirection::Output => "output",
+            AudioDirection::Input => "input",
+            AudioDirection::Output => "output",
         }
     }
 }

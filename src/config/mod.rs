@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-
 use std::{fs, path::PathBuf};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -10,6 +9,7 @@ pub struct AudioConfig {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TanixConfig {
+    #[serde(default)]
     pub audio: AudioConfig,
 }
 
