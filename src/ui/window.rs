@@ -1,7 +1,7 @@
 use adw::prelude::*;
 use adw::{ActionRow, Application, ApplicationWindow, HeaderBar, PreferencesGroup, StatusPage};
 
-use gtk::{Align, Box, Button, DropDown, Label, Orientation, Separator};
+use gtk::{Align, Box, Button, DropDown, Orientation, Separator};
 
 use crate::audio::{AudioDevice, AudioStatus};
 
@@ -13,15 +13,7 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
         .default_height(720)
         .build();
 
-    // ---------------------------------------------------------
-    // Header
-    // ---------------------------------------------------------
-
     let header = HeaderBar::builder().show_end_title_buttons(true).build();
-
-    // ---------------------------------------------------------
-    // Root layout
-    // ---------------------------------------------------------
 
     let root = Box::new(Orientation::Vertical, 0);
     root.set_vexpand(true);
@@ -62,59 +54,71 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
 
     let app_buttons = Box::new(Orientation::Horizontal, 12);
     app_buttons.set_halign(Align::Fill);
-
     app_buttons.append(&tonex_button);
     app_buttons.append(&amplitube_button);
 
     applications.add(&app_buttons);
     content.append(&applications);
 
-    // ---------------------------------------------------------
-    // Separator
-    // ---------------------------------------------------------
-
-    let separator = Separator::new(Orientation::Horizontal);
-    content.append(&separator);
+    content.append(&Separator::new(Orientation::Horizontal));
 
     // ---------------------------------------------------------
     // Audio
     // ---------------------------------------------------------
 
     let audio = PreferencesGroup::builder()
-        .title("Audio")
-        .description("Select the input and output devices Tanix should use")
+        .title("Audio Interface")
+        .description("Select the hardware Tanix should use for guitar audio")
         .build();
 
     match audio_status {
         AudioStatus::Connected { inputs, outputs } => {
-            let input_dropdown = create_device_dropdown(
-                "Input Device",
-                "Select the device your guitar is connected to",
-                &inputs,
-            );
+            let hardware_inputs: Vec<AudioDevice> = inputs
+                .iter()
+                .filter(|device| device.is_hardware)
+                .cloned()
+                .collect();
 
-            let output_dropdown = create_device_dropdown(
-                "Output Device",
-                "Select where Tanix should send audio",
-                &outputs,
-            );
+            let hardware_outputs: Vec<AudioDevice> = outputs
+                .iter()
+                .filter(|device| device.is_hardware)
+                .cloned()
+                .collect();
 
-            audio.add(&input_dropdown);
-            audio.add(&output_dropdown);
+            let input_row =
+                create_device_row("Input", "Guitar / instrument input", &hardware_inputs);
 
-            let status = Label::new(Some("● PipeWire connected"));
-            status.set_xalign(0.0);
-            status.add_css_class("dim-label");
+            let output_row =
+                create_device_row("Output", "Monitor / headphone output", &hardware_outputs);
 
+            audio.add(&input_row);
+            audio.add(&output_row);
+
+            let status = ActionRow::builder()
+                .title("PipeWire")
+                .subtitle("Connected")
+                .build();
+
+            status.add_prefix(&create_status_indicator(true));
             audio.add(&status);
+
+            if hardware_inputs.is_empty() && hardware_outputs.is_empty() {
+                let warning = ActionRow::builder()
+                    .title("No hardware interfaces detected")
+                    .subtitle("Tanix can see PipeWire, but no physical audio interface was found.")
+                    .build();
+
+                audio.add(&warning);
+            }
         }
 
         AudioStatus::Failed(error) => {
             let error_row = ActionRow::builder()
-                .title("PipeWire")
-                .subtitle(&format!("Unable to detect audio devices: {error}"))
+                .title("PipeWire unavailable")
+                .subtitle(&error)
                 .build();
 
+            error_row.add_prefix(&create_status_indicator(false));
             audio.add(&error_row);
         }
     }
@@ -156,33 +160,35 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     window.present();
 }
 
-fn create_device_dropdown(title: &str, subtitle: &str, devices: &[AudioDevice]) -> ActionRow {
+fn create_device_row(title: &str, subtitle: &str, devices: &[AudioDevice]) -> ActionRow {
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
 
     if devices.is_empty() {
-        let dropdown = DropDown::from_strings(&["No devices detected"]);
+        let dropdown = DropDown::from_strings(&["No hardware detected"]);
         dropdown.set_sensitive(false);
-        dropdown.set_hexpand(false);
 
         row.add_suffix(&dropdown);
 
         return row;
     }
 
-    let device_names: Vec<&str> = devices.iter().map(|device| device.name.as_str()).collect();
+    let names: Vec<String> = devices.iter().map(device_display_name).collect();
 
-    let dropdown = DropDown::from_strings(&device_names);
-    dropdown.set_hexpand(false);
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let dropdown = DropDown::from_strings(&name_refs);
 
     let devices_for_callback = devices.to_vec();
 
     dropdown.connect_selected_notify(move |dropdown| {
-        let selected = dropdown.selected() as usize;
+        let index = dropdown.selected() as usize;
 
-        if let Some(device) = devices_for_callback.get(selected) {
+        if let Some(device) = devices_for_callback.get(index) {
             println!(
-                "Tanix selected audio device: {} (id={}, class={})",
-                device.name, device.id, device.media_class
+                "Tanix selected {}: {} (PipeWire node {})",
+                device.direction_label(),
+                device.name,
+                device.id
             );
         }
     });
@@ -190,4 +196,46 @@ fn create_device_dropdown(title: &str, subtitle: &str, devices: &[AudioDevice]) 
     row.add_suffix(&dropdown);
 
     row
+}
+
+fn device_display_name(device: &AudioDevice) -> String {
+    let manufacturer = device
+        .vendor_name
+        .as_deref()
+        .or(device.device_name.as_deref());
+
+    let product = device.product_name.as_deref();
+
+    match (manufacturer, product) {
+        (Some(manufacturer), Some(product)) if !product.contains(manufacturer) => {
+            format!("{manufacturer} • {product}")
+        }
+
+        (Some(manufacturer), _) => {
+            format!("{manufacturer} • {}", device.name)
+        }
+
+        (_, Some(product)) => product.to_string(),
+
+        _ => device.name.clone(),
+    }
+}
+
+fn create_status_indicator(connected: bool) -> gtk::Image {
+    let icon = if connected {
+        "emblem-ok-symbolic"
+    } else {
+        "dialog-error-symbolic"
+    };
+
+    gtk::Image::from_icon_name(icon)
+}
+
+impl AudioDevice {
+    fn direction_label(&self) -> &'static str {
+        match self.direction {
+            crate::audio::AudioDirection::Input => "input",
+            crate::audio::AudioDirection::Output => "output",
+        }
+    }
 }
