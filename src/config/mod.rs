@@ -1,10 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioConfig {
     pub input_node_id: Option<u32>,
     pub output_node_id: Option<u32>,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            input_node_id: None,
+            output_node_id: None,
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -24,11 +37,16 @@ impl TanixConfig {
     pub fn load() -> Self {
         let path = Self::path();
 
-        let Ok(contents) = fs::read_to_string(path) else {
-            return Self::default();
+        let config = match fs::read_to_string(&path) {
+            Ok(contents) => toml::from_str(&contents).unwrap_or_default(),
+            Err(_) => Self::default(),
         };
 
-        toml::from_str(&contents).unwrap_or_default()
+        if let Err(error) = config.save() {
+            eprintln!("Failed to initialize Tanix configuration: {error}");
+        }
+
+        config
     }
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {

@@ -6,7 +6,7 @@ use gtk::{Align, Box, Button, DropDown, Orientation, Separator};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    audio::{AudioDevice, AudioDirection, AudioStatus},
+    audio::{AudioDevice, AudioDirection, AudioStatus, AudioVendor, detect_audio_devices},
     config::TanixConfig,
 };
 
@@ -32,10 +32,6 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     content.set_margin_end(40);
     content.set_spacing(28);
 
-    // ---------------------------------------------------------
-    // Welcome
-    // ---------------------------------------------------------
-
     let welcome = StatusPage::builder()
         .title("Tanix")
         .description("TONEX + AmpliTube on Linux")
@@ -53,13 +49,16 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
         .build();
 
     let tonex_button = Button::with_label("Launch TONEX");
+
     tonex_button.add_css_class("suggested-action");
     tonex_button.set_hexpand(true);
 
     let amplitube_button = Button::with_label("Launch AmpliTube 5");
+
     amplitube_button.set_hexpand(true);
 
     let app_buttons = Box::new(Orientation::Horizontal, 12);
+
     app_buttons.set_halign(Align::Fill);
     app_buttons.append(&tonex_button);
     app_buttons.append(&amplitube_button);
@@ -75,21 +74,29 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
 
     let audio = PreferencesGroup::builder()
         .title("Audio Interface")
-        .description("Select the hardware Tanix should use for guitar audio")
+        .description("Configure the hardware used by Tanix")
         .build();
+
+    let refresh_button = Button::with_label("Refresh");
+
+    let refresh_row = ActionRow::builder()
+        .title("Audio Devices")
+        .subtitle("Refresh available PipeWire hardware")
+        .build();
+
+    refresh_row.add_suffix(&refresh_button);
+    audio.add(&refresh_row);
 
     match audio_status {
         AudioStatus::Connected { inputs, outputs } => {
             let hardware_inputs: Vec<AudioDevice> = inputs
-                .iter()
+                .into_iter()
                 .filter(|device| device.is_hardware)
-                .cloned()
                 .collect();
 
             let hardware_outputs: Vec<AudioDevice> = outputs
-                .iter()
+                .into_iter()
                 .filter(|device| device.is_hardware)
-                .cloned()
                 .collect();
 
             let input_row = create_device_row(
@@ -111,18 +118,189 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
             audio.add(&input_row);
             audio.add(&output_row);
 
+            // -------------------------------------------------
+            // Selected interface information
+            // -------------------------------------------------
+
+            let selected_device = selected_device(&hardware_inputs, &hardware_outputs, &config);
+
+            if let Some(device) = selected_device {
+                let hardware = PreferencesGroup::builder()
+                    .title("Hardware Information")
+                    .description("Information reported by PipeWire / ALSA")
+                    .build();
+
+                hardware.add(&info_row(
+                    "Manufacturer",
+                    device.vendor_name.as_deref().unwrap_or("Unknown"),
+                ));
+
+                hardware.add(&info_row(
+                    "Product",
+                    device
+                        .product_name
+                        .as_deref()
+                        .or(device.device_name.as_deref())
+                        .unwrap_or(&device.name),
+                ));
+
+                hardware.add(&info_row("Vendor", device.vendor.display_name()));
+
+                hardware.add(&info_row("Bus", device.bus.as_deref().unwrap_or("Unknown")));
+
+                hardware.add(&info_row("API", device.api.as_deref().unwrap_or("Unknown")));
+
+                hardware.add(&info_row(
+                    "Node",
+                    device.node_name.as_deref().unwrap_or("Unknown"),
+                ));
+
+                hardware.add(&info_row("PipeWire ID", &device.id.to_string()));
+
+                audio.add(&hardware);
+            }
+
+            // -------------------------------------------------
+            // Sample rate
+            // -------------------------------------------------
+
+            let sample_rates = [
+                "44100 Hz",
+                "48000 Hz",
+                "88200 Hz",
+                "96000 Hz",
+                "176400 Hz",
+                "192000 Hz",
+            ];
+
+            let sample_rate_row = ActionRow::builder()
+                .title("Sample Rate")
+                .subtitle("Audio engine sample rate")
+                .build();
+
+            let sample_rate_dropdown = DropDown::from_strings(&sample_rates);
+
+            let current_rate = config.borrow().audio.sample_rate;
+
+            let rate_index = match current_rate {
+                44_100 => 0,
+                48_000 => 1,
+                88_200 => 2,
+                96_000 => 3,
+                176_400 => 4,
+                192_000 => 5,
+                _ => 1,
+            };
+
+            sample_rate_dropdown.set_selected(rate_index);
+
+            let config_clone = Rc::clone(&config);
+
+            sample_rate_dropdown.connect_selected_notify(move |dropdown| {
+                let rates = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
+
+                let index = dropdown.selected() as usize;
+
+                if let Some(&rate) = rates.get(index) {
+                    let mut config = config_clone.borrow_mut();
+
+                    config.audio.sample_rate = rate;
+
+                    if let Err(error) = config.save() {
+                        eprintln!("Failed to save sample rate: {error}");
+                    }
+                }
+            });
+
+            sample_rate_row.add_suffix(&sample_rate_dropdown);
+
+            audio.add(&sample_rate_row);
+
+            // -------------------------------------------------
+            // Buffer
+            // -------------------------------------------------
+
+            let buffer_sizes = [
+                "32 samples",
+                "64 samples",
+                "128 samples",
+                "256 samples",
+                "512 samples",
+                "1024 samples",
+            ];
+
+            let buffer_row = ActionRow::builder()
+                .title("Buffer Size")
+                .subtitle("Lower values reduce latency")
+                .build();
+
+            let buffer_dropdown = DropDown::from_strings(&buffer_sizes);
+
+            let current_buffer = config.borrow().audio.buffer_size;
+
+            let buffer_index = match current_buffer {
+                32 => 0,
+                64 => 1,
+                128 => 2,
+                256 => 3,
+                512 => 4,
+                1024 => 5,
+                _ => 2,
+            };
+
+            buffer_dropdown.set_selected(buffer_index);
+
+            let config_clone = Rc::clone(&config);
+
+            buffer_dropdown.connect_selected_notify(move |dropdown| {
+                let buffers = [32, 64, 128, 256, 512, 1024];
+
+                let index = dropdown.selected() as usize;
+
+                if let Some(&buffer) = buffers.get(index) {
+                    let mut config = config_clone.borrow_mut();
+
+                    config.audio.buffer_size = buffer;
+
+                    if let Err(error) = config.save() {
+                        eprintln!("Failed to save buffer size: {error}");
+                    }
+                }
+            });
+
+            buffer_row.add_suffix(&buffer_dropdown);
+
+            audio.add(&buffer_row);
+
+            // -------------------------------------------------
+            // Latency
+            // -------------------------------------------------
+
+            let latency = calculate_latency(
+                config.borrow().audio.sample_rate,
+                config.borrow().audio.buffer_size,
+            );
+
+            let latency_row = ActionRow::builder()
+                .title("Estimated Latency")
+                .subtitle(&format!("{latency:.2} ms one-way buffer latency"))
+                .build();
+
+            audio.add(&latency_row);
+
             let status = ActionRow::builder()
                 .title("PipeWire")
                 .subtitle("Connected")
                 .build();
 
-            status.add_prefix(&create_status_indicator(true));
+            status.add_prefix(&status_icon(true));
+
             audio.add(&status);
 
             if hardware_inputs.is_empty() && hardware_outputs.is_empty() {
                 let warning = ActionRow::builder()
                     .title("No hardware interfaces detected")
-                    .subtitle("Tanix can see PipeWire, but no physical audio interface was found.")
+                    .subtitle("PipeWire is working, but no physical audio interface was found.")
                     .build();
 
                 audio.add(&warning);
@@ -135,10 +313,25 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
                 .subtitle(&error)
                 .build();
 
-            error_row.add_prefix(&create_status_indicator(false));
+            error_row.add_prefix(&status_icon(false));
+
             audio.add(&error_row);
         }
     }
+
+    refresh_button.connect_clicked(move |_| match detect_audio_devices() {
+        AudioStatus::Connected { inputs, outputs } => {
+            println!(
+                "Tanix detected {} inputs and {} outputs",
+                inputs.len(),
+                outputs.len()
+            );
+        }
+
+        AudioStatus::Failed(error) => {
+            eprintln!("Audio refresh failed: {error}");
+        }
+    });
 
     content.append(&audio);
 
@@ -158,17 +351,13 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
 
     let backend = ActionRow::builder()
         .title("Audio Backend")
-        .subtitle("PipeWire")
+        .subtitle("PipeWire / ALSA")
         .build();
 
     runtime.add(&wine);
     runtime.add(&backend);
 
     content.append(&runtime);
-
-    // ---------------------------------------------------------
-    // Window
-    // ---------------------------------------------------------
 
     root.append(&header);
     root.append(&content);
@@ -188,6 +377,7 @@ fn create_device_row(
 
     if devices.is_empty() {
         let dropdown = DropDown::from_strings(&["No hardware detected"]);
+
         dropdown.set_sensitive(false);
         row.add_suffix(&dropdown);
 
@@ -196,13 +386,13 @@ fn create_device_row(
 
     let names: Vec<String> = devices.iter().map(device_display_name).collect();
 
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
 
-    let dropdown = DropDown::from_strings(&name_refs);
+    let dropdown = DropDown::from_strings(&refs);
 
-    // Restore previously selected device.
     let saved_id = match direction {
         AudioDirection::Input => config.borrow().audio.input_node_id,
+
         AudioDirection::Output => config.borrow().audio.output_node_id,
     };
 
@@ -213,8 +403,10 @@ fn create_device_row(
     }
 
     let devices_for_callback = devices.to_vec();
-    let config_for_callback = Rc::clone(config);
-    let direction_for_callback = direction.clone();
+
+    let config_clone = Rc::clone(config);
+
+    let direction_clone = direction.clone();
 
     dropdown.connect_selected_notify(move |dropdown| {
         let index = dropdown.selected() as usize;
@@ -223,29 +415,27 @@ fn create_device_row(
             return;
         };
 
-        {
-            let mut config = config_for_callback.borrow_mut();
+        let mut config = config_clone.borrow_mut();
 
-            match direction_for_callback {
-                AudioDirection::Input => {
-                    config.audio.input_node_id = Some(device.id);
-                }
-
-                AudioDirection::Output => {
-                    config.audio.output_node_id = Some(device.id);
-                }
+        match direction_clone {
+            AudioDirection::Input => {
+                config.audio.input_node_id = Some(device.id);
             }
 
-            if let Err(error) = config.save() {
-                eprintln!("Failed to save Tanix configuration: {error}");
+            AudioDirection::Output => {
+                config.audio.output_node_id = Some(device.id);
             }
         }
 
+        if let Err(error) = config.save() {
+            eprintln!("Failed to save audio device: {error}");
+        }
+
         println!(
-            "Tanix selected {}: {} (PipeWire node {})",
+            "Selected {}: {} ({})",
             device.direction_label(),
             device.name,
-            device.id
+            device.vendor.display_name()
         );
     });
 
@@ -254,30 +444,64 @@ fn create_device_row(
     row
 }
 
+fn selected_device(
+    inputs: &[AudioDevice],
+    outputs: &[AudioDevice],
+    config: &Rc<RefCell<TanixConfig>>,
+) -> Option<AudioDevice> {
+    let config = config.borrow();
+
+    let input = config
+        .audio
+        .input_node_id
+        .and_then(|id| inputs.iter().find(|device| device.id == id));
+
+    let output = config
+        .audio
+        .output_node_id
+        .and_then(|id| outputs.iter().find(|device| device.id == id));
+
+    input.cloned().or_else(|| output.cloned())
+}
+
+fn info_row(title: &str, value: &str) -> ActionRow {
+    ActionRow::builder().title(title).subtitle(value).build()
+}
+
 fn device_display_name(device: &AudioDevice) -> String {
-    let manufacturer = device
-        .vendor_name
+    let vendor = device.vendor.display_name();
+
+    let product = device
+        .product_name
         .as_deref()
         .or(device.device_name.as_deref());
 
-    let product = device.product_name.as_deref();
+    match device.vendor {
+        AudioVendor::Generic => match product {
+            Some(product) => {
+                format!("{product} • {}", device.name)
+            }
 
-    match (manufacturer, product) {
-        (Some(manufacturer), Some(product)) if !product.contains(manufacturer) => {
-            format!("{manufacturer} • {product}")
-        }
+            None => device.name.clone(),
+        },
 
-        (Some(manufacturer), _) => {
-            format!("{manufacturer} • {}", device.name)
-        }
+        _ => match product {
+            Some(product) if !product.to_lowercase().contains(&vendor.to_lowercase()) => {
+                format!("{vendor} • {product}")
+            }
 
-        (_, Some(product)) => product.to_string(),
-
-        _ => device.name.clone(),
+            _ => {
+                format!("{vendor} • {}", device.name)
+            }
+        },
     }
 }
 
-fn create_status_indicator(connected: bool) -> gtk::Image {
+fn calculate_latency(sample_rate: u32, buffer_size: u32) -> f64 {
+    (buffer_size as f64 / sample_rate as f64) * 1000.0
+}
+
+fn status_icon(connected: bool) -> gtk::Image {
     let icon = if connected {
         "emblem-ok-symbolic"
     } else {

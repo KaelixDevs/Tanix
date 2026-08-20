@@ -8,30 +8,59 @@ pub enum AudioDirection {
     Output,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AudioVendor {
+    Focusrite,
+    IkMultimedia,
+    Fender,
+    Behringer,
+    Audient,
+    Motu,
+    Presonus,
+    NativeInstruments,
+    UniversalAudio,
+    Generic,
+}
+
+impl AudioVendor {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Focusrite => "Focusrite",
+            Self::IkMultimedia => "IK Multimedia",
+            Self::Fender => "Fender",
+            Self::Behringer => "Behringer",
+            Self::Audient => "Audient",
+            Self::Motu => "MOTU",
+            Self::Presonus => "PreSonus",
+            Self::NativeInstruments => "Native Instruments",
+            Self::UniversalAudio => "Universal Audio",
+            Self::Generic => "Generic",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AudioDevice {
     pub id: u32,
 
-    // PipeWire / node information
     pub name: String,
     pub node_name: Option<String>,
     pub media_class: String,
 
-    // Hardware information when PipeWire exposes it
     pub device_name: Option<String>,
     pub vendor_name: Option<String>,
     pub product_name: Option<String>,
+
     pub vendor_id: Option<String>,
     pub product_id: Option<String>,
+
     pub bus: Option<String>,
     pub api: Option<String>,
     pub serial: Option<String>,
 
-    // Whether this appears to represent actual hardware
     pub is_hardware: bool,
-
-    // Direction this node can be used for
     pub direction: AudioDirection,
+    pub vendor: AudioVendor,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +76,46 @@ fn prop(props: &pw::spa::utils::dict::DictRef, key: &str) -> Option<String> {
     props.get(key).map(str::to_string)
 }
 
+fn classify_vendor(
+    vendor_name: &Option<String>,
+    product_name: &Option<String>,
+    device_name: &Option<String>,
+) -> AudioVendor {
+    let text = format!(
+        "{} {} {}",
+        vendor_name.as_deref().unwrap_or(""),
+        product_name.as_deref().unwrap_or(""),
+        device_name.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    if text.contains("focusrite") {
+        AudioVendor::Focusrite
+    } else if text.contains("ik multimedia")
+        || text.contains("ik-multimedia")
+        || text.contains("axe i/o")
+        || text.contains("axeio")
+    {
+        AudioVendor::IkMultimedia
+    } else if text.contains("fender") || text.contains("mustang lt") || text.contains("mustang") {
+        AudioVendor::Fender
+    } else if text.contains("behringer") {
+        AudioVendor::Behringer
+    } else if text.contains("audient") {
+        AudioVendor::Audient
+    } else if text.contains("motu") {
+        AudioVendor::Motu
+    } else if text.contains("presonus") || text.contains("preSonus") {
+        AudioVendor::Presonus
+    } else if text.contains("native instruments") {
+        AudioVendor::NativeInstruments
+    } else if text.contains("universal audio") || text.contains("ua-") {
+        AudioVendor::UniversalAudio
+    } else {
+        AudioVendor::Generic
+    }
+}
+
 fn is_hardware_device(
     api: &Option<String>,
     bus: &Option<String>,
@@ -54,7 +123,9 @@ fn is_hardware_device(
     product_id: &Option<String>,
     device_name: &Option<String>,
 ) -> bool {
-    api.is_some()
+    api.as_deref()
+        .map(|value| value.contains("alsa"))
+        .unwrap_or(false)
         || bus.is_some()
         || vendor_id.is_some()
         || product_id.is_some()
@@ -72,8 +143,10 @@ fn build_audio_device(
     let device_name = prop(props, "device.name");
     let vendor_name = prop(props, "device.vendor.name");
     let product_name = prop(props, "device.product.name");
+
     let vendor_id = prop(props, "device.vendor.id");
     let product_id = prop(props, "device.product.id");
+
     let bus = prop(props, "device.bus");
     let api = prop(props, "device.api");
     let serial = prop(props, "device.serial");
@@ -86,6 +159,8 @@ fn build_audio_device(
         .unwrap_or_else(|| "Unnamed Audio Device".to_string());
 
     let is_hardware = is_hardware_device(&api, &bus, &vendor_id, &product_id, &device_name);
+
+    let vendor = classify_vendor(&vendor_name, &product_name, &device_name);
 
     AudioDevice {
         id: global.id,
@@ -102,6 +177,7 @@ fn build_audio_device(
         serial,
         is_hardware,
         direction,
+        vendor,
     }
 }
 
@@ -113,11 +189,14 @@ pub fn detect_audio_devices() -> AudioStatus {
 
         let result = (|| -> Result<(), Box<dyn std::error::Error>> {
             let main_loop = pw::main_loop::MainLoopRc::new(None)?;
+
             let context = pw::context::ContextRc::new(&main_loop, None)?;
+
             let core = context.connect_rc(None)?;
             let registry = core.get_registry_rc()?;
 
             let inputs = Rc::new(std::cell::RefCell::new(Vec::<AudioDevice>::new()));
+
             let outputs = Rc::new(std::cell::RefCell::new(Vec::<AudioDevice>::new()));
 
             let inputs_clone = Rc::clone(&inputs);
@@ -136,26 +215,43 @@ pub fn detect_audio_devices() -> AudioStatus {
 
                     let media_class = media_class.to_string();
 
-                    let is_audio_source = media_class == "Audio/Source";
-                    let is_audio_sink = media_class == "Audio/Sink";
-                    let is_audio_duplex = media_class == "Audio/Duplex";
+                    match media_class.as_str() {
+                        "Audio/Source" => {
+                            inputs_clone.borrow_mut().push(build_audio_device(
+                                global,
+                                &media_class,
+                                props,
+                                AudioDirection::Input,
+                            ));
+                        }
 
-                    if !is_audio_source && !is_audio_sink && !is_audio_duplex {
-                        return;
-                    }
+                        "Audio/Sink" => {
+                            outputs_clone.borrow_mut().push(build_audio_device(
+                                global,
+                                &media_class,
+                                props,
+                                AudioDirection::Output,
+                            ));
+                        }
 
-                    if is_audio_source || is_audio_duplex {
-                        let device =
-                            build_audio_device(global, &media_class, props, AudioDirection::Input);
+                        "Audio/Duplex" => {
+                            let device = build_audio_device(
+                                global,
+                                &media_class,
+                                props,
+                                AudioDirection::Input,
+                            );
 
-                        inputs_clone.borrow_mut().push(device);
-                    }
+                            inputs_clone.borrow_mut().push(device.clone());
 
-                    if is_audio_sink || is_audio_duplex {
-                        let device =
-                            build_audio_device(global, &media_class, props, AudioDirection::Output);
+                            let mut output_device = device;
 
-                        outputs_clone.borrow_mut().push(device);
+                            output_device.direction = AudioDirection::Output;
+
+                            outputs_clone.borrow_mut().push(output_device);
+                        }
+
+                        _ => {}
                     }
                 })
                 .register();
@@ -183,7 +279,6 @@ pub fn detect_audio_devices() -> AudioStatus {
             let mut inputs = inputs.borrow().clone();
             let mut outputs = outputs.borrow().clone();
 
-            // Prefer hardware devices over virtual/software nodes.
             inputs.sort_by_key(|device| !device.is_hardware);
             outputs.sort_by_key(|device| !device.is_hardware);
 
@@ -199,6 +294,7 @@ pub fn detect_audio_devices() -> AudioStatus {
 
     match rx.recv() {
         Ok(status) => status,
+
         Err(error) => AudioStatus::Failed(error.to_string()),
     }
 }
