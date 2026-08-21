@@ -6,8 +6,10 @@ use gtk::{Align, Box, Button, DropDown, Orientation, Separator};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
+    apps::{ApplicationManager, TanixApplication},
     audio::{AudioDevice, AudioDirection, AudioStatus, AudioVendor, detect_audio_devices},
     config::TanixConfig,
+    runtime::{RuntimeStatus, WineRuntime},
 };
 
 pub fn build_window(app: &Application, audio_status: AudioStatus) {
@@ -32,6 +34,10 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     content.set_margin_end(40);
     content.set_spacing(28);
 
+    // ---------------------------------------------------------
+    // Welcome
+    // ---------------------------------------------------------
+
     let welcome = StatusPage::builder()
         .title("Tanix")
         .description("TONEX + AmpliTube on Linux")
@@ -45,15 +51,34 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
 
     let applications = PreferencesGroup::builder()
         .title("Your Rig")
-        .description("Launch your Windows guitar software through Tanix")
+        .description("Windows guitar software managed by Tanix")
         .build();
 
-    let tonex_button = Button::with_label("Launch TONEX");
+    let application_manager = ApplicationManager::new();
+
+    if let Err(error) = application_manager.ensure_directories() {
+        eprintln!("Failed to prepare application directories: {error}");
+    }
+
+    let tonex = application_manager.detect(TanixApplication::Tonex);
+
+    let amplitube = application_manager.detect(TanixApplication::Amplitube5);
+
+    let tonex_button = Button::with_label(if tonex.executable.is_some() {
+        "Launch TONEX"
+    } else {
+        "Install TONEX"
+    });
 
     tonex_button.add_css_class("suggested-action");
+
     tonex_button.set_hexpand(true);
 
-    let amplitube_button = Button::with_label("Launch AmpliTube 5");
+    let amplitube_button = Button::with_label(if amplitube.executable.is_some() {
+        "Launch AmpliTube 5"
+    } else {
+        "Install AmpliTube 5"
+    });
 
     amplitube_button.set_hexpand(true);
 
@@ -64,6 +89,52 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
     app_buttons.append(&amplitube_button);
 
     applications.add(&app_buttons);
+
+    // ---------------------------------------------------------
+    // TONEX status
+    // ---------------------------------------------------------
+
+    let tonex_status = if let Some(executable) = tonex.executable.as_ref() {
+        format!("Installed — {}", executable.display())
+    } else {
+        "Not installed".to_string()
+    };
+
+    let tonex_row = ActionRow::builder()
+        .title("TONEX")
+        .subtitle(&tonex_status)
+        .build();
+
+    tonex_row.add_prefix(&status_icon(tonex.executable.is_some()));
+
+    applications.add(&tonex_row);
+
+    // ---------------------------------------------------------
+    // AmpliTube status
+    // ---------------------------------------------------------
+
+    let amplitube_status = if let Some(executable) = amplitube.executable.as_ref() {
+        format!("Installed — {}", executable.display())
+    } else {
+        "Not installed".to_string()
+    };
+
+    let amplitube_row = ActionRow::builder()
+        .title("AmpliTube 5")
+        .subtitle(&amplitube_status)
+        .build();
+
+    amplitube_row.add_prefix(&status_icon(amplitube.executable.is_some()));
+
+    applications.add(&amplitube_row);
+
+    let application_path_row = ActionRow::builder()
+        .title("Application Directory")
+        .subtitle(&application_manager.base_directory().display().to_string())
+        .build();
+
+    applications.add(&application_path_row);
+
     content.append(&applications);
 
     content.append(&Separator::new(Orientation::Horizontal));
@@ -85,6 +156,7 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
         .build();
 
     refresh_row.add_suffix(&refresh_button);
+
     audio.add(&refresh_row);
 
     match audio_status {
@@ -118,13 +190,7 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
             audio.add(&input_row);
             audio.add(&output_row);
 
-            // -------------------------------------------------
-            // Selected interface information
-            // -------------------------------------------------
-
-            let selected_device = selected_device(&hardware_inputs, &hardware_outputs, &config);
-
-            if let Some(device) = selected_device {
+            if let Some(device) = selected_device(&hardware_inputs, &hardware_outputs, &config) {
                 let hardware = PreferencesGroup::builder()
                     .title("Hardware Information")
                     .description("Information reported by PipeWire / ALSA")
@@ -217,7 +283,7 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
             audio.add(&sample_rate_row);
 
             // -------------------------------------------------
-            // Buffer
+            // Buffer size
             // -------------------------------------------------
 
             let buffer_sizes = [
@@ -288,6 +354,10 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
 
             audio.add(&latency_row);
 
+            // -------------------------------------------------
+            // PipeWire
+            // -------------------------------------------------
+
             let status = ActionRow::builder()
                 .title("PipeWire")
                 .subtitle("Connected")
@@ -341,28 +411,178 @@ pub fn build_window(app: &Application, audio_status: AudioStatus) {
 
     let runtime = PreferencesGroup::builder()
         .title("Tanix Runtime")
-        .description("Compatibility environment")
+        .description("Wine compatibility environment")
         .build();
 
-    let wine = ActionRow::builder()
-        .title("Wine")
-        .subtitle("Not configured")
-        .build();
+    match WineRuntime::detect() {
+        RuntimeStatus::Available(wine) => {
+            let version = wine.version.as_deref().unwrap_or("Unknown");
 
-    let backend = ActionRow::builder()
-        .title("Audio Backend")
-        .subtitle("PipeWire / ALSA")
-        .build();
+            let wine_row = ActionRow::builder().title("Wine").subtitle(version).build();
 
-    runtime.add(&wine);
-    runtime.add(&backend);
+            wine_row.add_prefix(&status_icon(true));
+
+            runtime.add(&wine_row);
+
+            // -------------------------------------------------
+            // Prefix
+            // -------------------------------------------------
+
+            let prefix_initialized = wine.prefix_exists();
+
+            let prefix_status = if prefix_initialized {
+                "Initialized"
+            } else {
+                "Not initialized"
+            };
+
+            let prefix_row = ActionRow::builder()
+                .title("Wine Prefix")
+                .subtitle(&format!("{prefix_status} — {}", wine.prefix().display()))
+                .build();
+
+            runtime.add(&prefix_row);
+
+            // -------------------------------------------------
+            // Initialize
+            // -------------------------------------------------
+
+            if !prefix_initialized {
+                let initialize_button = Button::with_label("Initialize Prefix");
+
+                initialize_button.add_css_class("suggested-action");
+
+                let initialize_row = ActionRow::builder()
+                    .title("Tanix Wine Environment")
+                    .subtitle("Create Tanix's isolated Wine prefix")
+                    .build();
+
+                initialize_row.add_suffix(&initialize_button);
+
+                let wine_clone = wine.clone();
+
+                initialize_button.connect_clicked(move |button| {
+                    button.set_sensitive(false);
+
+                    button.set_label("Initializing…");
+
+                    match wine_clone.initialize_prefix() {
+                        Ok(()) => {
+                            button.set_label("Initialized");
+
+                            button.remove_css_class("suggested-action");
+
+                            button.add_css_class("success");
+
+                            println!(
+                                "Tanix Wine prefix initialized at {}",
+                                wine_clone.prefix().display()
+                            );
+                        }
+
+                        Err(error) => {
+                            eprintln!("Failed to initialize Wine prefix: {error}");
+
+                            button.set_sensitive(true);
+
+                            button.set_label("Retry");
+                        }
+                    }
+                });
+
+                runtime.add(&initialize_row);
+            }
+
+            // -------------------------------------------------
+            // Wine configuration
+            // -------------------------------------------------
+
+            let winecfg_button = Button::with_label("Open Wine Configuration");
+
+            let winecfg_row = ActionRow::builder()
+                .title("Wine Configuration")
+                .subtitle("Configure the Tanix Wine environment")
+                .build();
+
+            winecfg_row.add_suffix(&winecfg_button);
+
+            let wine_clone = wine.clone();
+
+            winecfg_button.connect_clicked(move |button| {
+                button.set_sensitive(false);
+
+                match wine_clone.winecfg() {
+                    Ok(()) => {
+                        println!("Opened winecfg using Tanix prefix");
+                    }
+
+                    Err(error) => {
+                        eprintln!("Failed to open winecfg: {error}");
+                    }
+                }
+
+                button.set_sensitive(true);
+            });
+
+            runtime.add(&winecfg_row);
+
+            // -------------------------------------------------
+            // Runtime paths
+            // -------------------------------------------------
+
+            let executable_row = ActionRow::builder()
+                .title("Wine Executable")
+                .subtitle(&wine.executable().display().to_string())
+                .build();
+
+            runtime.add(&executable_row);
+
+            let prefix_path_row = ActionRow::builder()
+                .title("Prefix Path")
+                .subtitle(&wine.prefix().display().to_string())
+                .build();
+
+            runtime.add(&prefix_path_row);
+
+            let backend = ActionRow::builder()
+                .title("Audio Backend")
+                .subtitle("PipeWire / ALSA")
+                .build();
+
+            runtime.add(&backend);
+        }
+
+        RuntimeStatus::NotInstalled => {
+            let wine_row = ActionRow::builder()
+                .title("Wine")
+                .subtitle("Not installed — install Wine to run Windows applications")
+                .build();
+
+            wine_row.add_prefix(&status_icon(false));
+
+            runtime.add(&wine_row);
+        }
+
+        RuntimeStatus::Failed(error) => {
+            let wine_row = ActionRow::builder().title("Wine").subtitle(&error).build();
+
+            wine_row.add_prefix(&status_icon(false));
+
+            runtime.add(&wine_row);
+        }
+    }
 
     content.append(&runtime);
+
+    // ---------------------------------------------------------
+    // Window
+    // ---------------------------------------------------------
 
     root.append(&header);
     root.append(&content);
 
     window.set_content(Some(&root));
+
     window.present();
 }
 
@@ -379,6 +599,7 @@ fn create_device_row(
         let dropdown = DropDown::from_strings(&["No hardware detected"]);
 
         dropdown.set_sensitive(false);
+
         row.add_suffix(&dropdown);
 
         return row;
